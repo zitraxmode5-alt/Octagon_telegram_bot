@@ -1,0 +1,21 @@
+{
+  "name": "octagon-telegram-bot",
+  "version": "1.0.0",
+  "description": "Базовый сервер на Node.js + Express и Telegram-бот",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "bot": "node bot.js"
+  },
+  "author": "Pipchenko Nikolay",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "node-telegram-bot-api": "^1.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
