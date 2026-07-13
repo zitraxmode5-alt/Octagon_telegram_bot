@@ -52,7 +52,9 @@ bot.onText(/^\/help/, (msg) => {
     "/creator — отправляет ФИО автора бота\n" +
     "/randomitem — случайный предмет из БД\n" +
     "/deleteitem <id> — удаляет предмет по ID, например: /deleteitem 3\n" +
-    "/getitembyid <id> — находит предмет по ID, например: /getitembyid 3";
+    "/getitembyid <id> — находит предмет по ID, например: /getitembyid 3\n" +
+    "!qr <текст/ссылка> — отправляет QR-код, например: !qr https://example.com\n" +
+    "!webscr <адрес сайта> — отправляет скриншот сайта, например: !webscr example.com";
   bot.sendMessage(chatId, text);
 });
 
@@ -124,6 +126,57 @@ bot.onText(/^\/getitembyid(?:@\w+)?(?:\s+(\d+))?/, async (msg, match) => {
     console.error(err);
     bot.sendMessage(chatId, "Ошибка при обращении к базе данных.");
   }
+});
+
+// Команда !qr <текст/ссылка> — генерирует и отправляет QR-код
+// Используется бесплатный внешний сервис api.qrserver.com (без API-ключа)
+bot.onText(/^!qr\s+(.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const data = match[1].trim();
+
+  if (!data) {
+    return bot.sendMessage(
+      chatId,
+      "Укажите текст или ссылку, например: !qr https://example.com"
+    );
+  }
+
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+    data
+  )}`;
+
+  bot.sendPhoto(chatId, qrUrl).catch((err) => {
+    console.error(err);
+    bot.sendMessage(chatId, "Не удалось сгенерировать QR-код.");
+  });
+});
+
+// Команда !webscr <адрес сайта> — делает и отправляет скриншот сайта
+// Используется бесплатный сервис mshots от WordPress.com (без API-ключа)
+bot.onText(/^!webscr\s+(.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  let url = match[1].trim();
+
+  if (!url) {
+    return bot.sendMessage(
+      chatId,
+      "Укажите адрес сайта, например: !webscr https://example.com"
+    );
+  }
+
+  // Добавляем протокол, если пользователь его не указал
+  if (!/^https?:\/\//i.test(url)) {
+    url = "https://" + url;
+  }
+
+  const screenshotUrl = `https://s0.wp.com/mshots/v1/${encodeURIComponent(
+    url
+  )}?w=1024&h=768`;
+
+  bot.sendPhoto(chatId, screenshotUrl).catch((err) => {
+    console.error(err);
+    bot.sendMessage(chatId, "Не удалось получить скриншот сайта.");
+  });
 });
 
 bot.on("polling_error", (err) => {
