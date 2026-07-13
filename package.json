@@ -14,7 +14,8 @@
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "mysql2": "^3.22.6",
-    "node-telegram-bot-api": "^1.1.2"
+    "node-telegram-bot-api": "^1.1.2",
+    "set-interval-async": "^3.0.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

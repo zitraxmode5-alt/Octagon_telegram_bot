@@ -1,5 +1,6 @@
 require("dotenv").config({ quiet: true });
 const { TelegramBot } = require("node-telegram-bot-api");
+const { setIntervalAsync } = require("set-interval-async");
 const pool = require("./db");
 
 // Токен берётся из файла .env (переменная TELEGRAM_BOT_TOKEN),
@@ -37,6 +38,21 @@ function formatItem(item) {
   return `(${item.id}) - ${item.name}: ${item.desc}`;
 }
 
+// При получении ЛЮБОГО сообщения от пользователя — обновляем (или создаём)
+// его запись в таблице Users с датой последнего сообщения
+bot.on("message", async (msg) => {
+  const userId = msg.from.id;
+  try {
+    await pool.query(
+      "INSERT INTO Users (ID, lastMessage) VALUES (?, CURDATE()) " +
+        "ON DUPLICATE KEY UPDATE lastMessage = CURDATE()",
+      [userId]
+    );
+  } catch (err) {
+    console.error("Не удалось обновить дату последнего сообщения:", err.message);
+  }
+});
+
 // Приветствие в начале диалога (команда /start)
 bot.onText(/^\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -54,7 +70,9 @@ bot.onText(/^\/help/, (msg) => {
     "/deleteitem <id> — удаляет предмет по ID, например: /deleteitem 3\n" +
     "/getitembyid <id> — находит предмет по ID, например: /getitembyid 3\n" +
     "!qr <текст/ссылка> — отправляет QR-код, например: !qr https://example.com\n" +
-    "!webscr <адрес сайта> — отправляет скриншот сайта, например: !webscr example.com";
+    "!webscr <адрес сайта> — отправляет скриншот сайта, например: !webscr example.com\n\n" +
+    "Также бот запоминает дату вашего последнего сообщения и каждый день в 13:00 " +
+    "(по Москве) присылает случайный предмет тем, кто не писал более 2х суток.";
   bot.sendMessage(chatId, text);
 });
 
@@ -182,5 +200,79 @@ bot.onText(/^!webscr\s+(.+)/, (msg, match) => {
 bot.on("polling_error", (err) => {
   console.error("Polling error:", err.message);
 });
+
+// ---------------------------------------------------------------------------
+// Ежедневная проверка в 13:00 по Москве:
+// если пользователь не писал боту больше 2х суток — присылаем ему randomItem
+// ---------------------------------------------------------------------------
+
+// Возвращает текущую дату/время по московскому часовому поясу,
+// независимо от того, в каком часовом поясе физически работает сервер
+function getMoscowTimeParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const map = {};
+  for (const part of parts) map[part.type] = part.value;
+
+  return {
+    dateStr: `${map.year}-${map.month}-${map.day}`,
+    hours: parseInt(map.hour, 10),
+    minutes: parseInt(map.minute, 10),
+  };
+}
+
+// Отправляет randomItem всем пользователям, которые не писали более 2х суток
+async function sendReminderToInactiveUsers() {
+  console.log("Проверка неактивных пользователей...");
+  try {
+    const [users] = await pool.query(
+      "SELECT * FROM Users WHERE lastMessage < DATE_SUB(CURDATE(), INTERVAL 2 DAY)"
+    );
+
+    for (const user of users) {
+      try {
+        const [rows] = await pool.query(
+          "SELECT * FROM Items ORDER BY RAND() LIMIT 1"
+        );
+        if (rows.length === 0) continue;
+
+        await bot.sendMessage(user.ID, formatItem(rows[0]));
+      } catch (err) {
+        console.error(
+          `Не удалось отправить напоминание пользователю ${user.ID}:`,
+          err.message
+        );
+      }
+    }
+
+    console.log(`Напоминания отправлены ${users.length} пользователям.`);
+  } catch (err) {
+    console.error("Ошибка при проверке неактивных пользователей:", err.message);
+  }
+}
+
+// Дата (по Москве), в которую рассылка уже была выполнена сегодня —
+// нужно, чтобы не запускать рассылку повторно в течение той же минуты/часа
+let lastRunDate = null;
+
+async function checkDailySchedule() {
+  const { dateStr, hours, minutes } = getMoscowTimeParts();
+
+  if (hours === 13 && minutes === 0 && lastRunDate !== dateStr) {
+    lastRunDate = dateStr;
+    await sendReminderToInactiveUsers();
+  }
+}
+
+// Проверяем расписание каждую минуту
+setIntervalAsync(checkDailySchedule, 60 * 1000);
 
 console.log("Telegram-бот запущен и ожидает сообщений...");
